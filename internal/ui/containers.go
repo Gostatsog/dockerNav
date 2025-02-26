@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"strings"
@@ -8,12 +9,12 @@ import (
 
 	"github.com/Gostatsog/dockerNav/internal/client"
 	"github.com/Gostatsog/dockerNav/pkg/formatter"
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/list"
+	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/viewport"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 )
 
@@ -60,6 +61,7 @@ type ContainerKeyMap struct {
 	Start   key.Binding
 	Restart key.Binding
 	Remove  key.Binding
+	Create  key.Binding
 	Back    key.Binding
 }
 
@@ -90,6 +92,10 @@ func DefaultContainerKeyMap() ContainerKeyMap {
 			key.WithKeys("x"),
 			key.WithHelp("x", "remove"),
 		),
+		Create: key.NewBinding(
+			key.WithKeys("c"),
+			key.WithHelp("c", "create"),
+		),
 		Back: key.NewBinding(
 			key.WithKeys("esc", "backspace"),
 			key.WithHelp("esc", "back"),
@@ -103,7 +109,7 @@ type ContainerModel struct {
 	containerList list.Model
 	selectedContainer *container.Summary
 	keyMap       ContainerKeyMap
-	state        string // "list", "logs", "confirm"
+	state        string // "list", "logs", "confirm", "create"
 	width        int
 	height       int
 	showAll      bool
@@ -112,6 +118,8 @@ type ContainerModel struct {
 	viewport     viewport.Model // For logs and other scrollable content
 	loading      bool
 	error        error
+	createModel  *ContainerCreateModel // Form for container creation
+	spinner      spinner.Model
 }
 
 // NewContainerModel creates a new container model
@@ -131,6 +139,7 @@ func NewContainerModel(docker *client.DockerClient) *ContainerModel {
 			keyMap.Start,
 			keyMap.Restart,
 			keyMap.Remove,
+			keyMap.Create,
 			keyMap.Back,
 		}
 	}
@@ -140,6 +149,11 @@ func NewContainerModel(docker *client.DockerClient) *ContainerModel {
 	vp.Style = lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
 		BorderForeground(ColorPrimary)
+		
+	// Set up spinner
+	s := spinner.New()
+	s.Spinner = spinner.Dot
+	s.Style = lipgloss.NewStyle().Foreground(ColorPrimary)
 
 	return &ContainerModel{
 		docker:       docker,
@@ -149,12 +163,13 @@ func NewContainerModel(docker *client.DockerClient) *ContainerModel {
 		showAll:      true,
 		viewport:     vp,
 		loading:      true,
+		spinner:      s,
 	}
 }
 
 // Init initializes the model
 func (m *ContainerModel) Init() tea.Cmd {
-	return m.fetchContainers()
+	return tea.Batch(m.fetchContainers(), m.spinner.Tick)
 }
 
 // fetchContainers returns a command that fetches container data
@@ -187,14 +202,14 @@ func (m *ContainerModel) fetchContainerLogs(containerID string) tea.Cmd {
 		defer logsReader.Close()
 		
 		// Read logs
-		buf := new(strings.Builder)
+		buf := new(bytes.Buffer)
 		_, err = buf.ReadFrom(logsReader)
 		if err != nil {
 			return ContainerLogsMsg{Error: err}
 		}
 		
 		return ContainerLogsMsg{
-			Logs: buf.String(),
+			Logs:  buf.String(),
 			Error: nil,
 		}
 	}
@@ -233,12 +248,27 @@ func (m *ContainerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		// Handle container creation view separately
+		if m.state == "create" {
+			if msg.String() == "esc" {
+				m.state = "list"
+				return m, nil
+			}
+			
+			var cmd tea.Cmd
+			newModel, cmd := m.createModel.Update(msg)
+			if updatedModel, ok := newModel.(*ContainerCreateModel); ok {
+				m.createModel = updatedModel
+			}
+			return m, cmd
+		}
+		
 		switch m.state {
 		case "list":
 			switch {
 			case key.Matches(msg, m.keyMap.Refresh):
 				m.loading = true
-				return m, m.fetchContainers()
+				return m, tea.Batch(m.fetchContainers(), m.spinner.Tick)
 				
 			case key.Matches(msg, m.keyMap.Logs):
 				if item, ok := m.containerList.SelectedItem().(ContainerItem); ok {
@@ -282,6 +312,14 @@ func (m *ContainerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.state = "confirm"
 					return m, nil
 				}
+				
+			case key.Matches(msg, m.keyMap.Create):
+				// Initialize container creation model
+				m.createModel = NewContainerCreateModel(m.docker)
+				m.createModel.width = m.width
+				m.createModel.height = m.height
+				m.state = "create"
+				return m, m.createModel.Init()
 			}
 			
 		case "logs":
@@ -321,6 +359,17 @@ func (m *ContainerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Update viewport dimensions
 		m.viewport.Width = msg.Width - 4
 		m.viewport.Height = msg.Height - headerHeight - footerHeight
+		
+		// Update create model dimensions if active
+		if m.createModel != nil {
+			m.createModel.width = msg.Width
+			m.createModel.height = msg.Height
+		}
+
+	case spinner.TickMsg:
+		var cmd tea.Cmd
+		m.spinner, cmd = m.spinner.Update(msg)
+		cmds = append(cmds, cmd)
 
 	case ContainerListMsg:
 		m.loading = false
@@ -336,11 +385,24 @@ func (m *ContainerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			createdTime := time.Unix(c.Created, 0)
 			created := formatter.FormatTime(createdTime)
 			
+			// Include state in description using color formatting
+			stateStyle := StyleTableRow
+			switch c.State {
+			case "running":
+				stateStyle = StyleSuccess
+			case "exited":
+				stateStyle = StyleSubtle
+			case "created":
+				stateStyle = StyleWarning
+			}
+			
+			status := stateStyle.Render(c.Status)
+			
 			desc := fmt.Sprintf("ID: %s • Image: %s • Created: %s • Status: %s",
 				c.ID[:12],
 				c.Image,
 				created,
-				c.Status,
+				status,
 			)
 			
 			items = append(items, ContainerItem{
@@ -376,12 +438,28 @@ func (m *ContainerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.loading = true
 		m.state = "list"
 		return m, m.fetchContainers()
+		
+	case ContainerCreateMsg:
+		// Container was created, refresh the list
+		m.loading = true
+		m.state = "list"
+		return m, m.fetchContainers()
 	}
 
 	// Update list in list state
 	if m.state == "list" {
 		var cmd tea.Cmd
 		m.containerList, cmd = m.containerList.Update(msg)
+		cmds = append(cmds, cmd)
+	}
+	
+	// Update create model if it exists
+	if m.state == "create" && m.createModel != nil {
+		var cmd tea.Cmd
+		newModel, cmd := m.createModel.Update(msg)
+		if updatedModel, ok := newModel.(*ContainerCreateModel); ok {
+			m.createModel = updatedModel
+		}
 		cmds = append(cmds, cmd)
 	}
 
@@ -391,7 +469,12 @@ func (m *ContainerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // View renders the current view
 func (m *ContainerModel) View() string {
 	if m.loading {
-		return StyleMainLayout.Render("Loading containers...")
+		return StyleMainLayout.Render(
+			lipgloss.JoinVertical(lipgloss.Center,
+				StyleTitle.Render("Containers"),
+				fmt.Sprintf("%s Loading containers...", m.spinner.View()),
+			),
+		)
 	}
 
 	if m.error != nil {
@@ -444,27 +527,13 @@ func (m *ContainerModel) View() string {
 			"",
 			confirmBox,
 		)
+		
+	case "create":
+		if m.createModel != nil {
+			return m.createModel.View()
+		}
 	}
 
 	return StyleMainLayout.Render(content)
 }
 
-// Helper functions for formatting
-func formatPorts(ports []types.Port) string {
-	if len(ports) == 0 {
-		return ""
-	}
-
-	var portStrings []string
-	for _, port := range ports {
-		if port.PublicPort != 0 {
-			portStr := fmt.Sprintf("%d:%d/%s", port.PublicPort, port.PrivatePort, port.Type)
-			portStrings = append(portStrings, portStr)
-		} else {
-			portStr := fmt.Sprintf("%d/%s", port.PrivatePort, port.Type)
-			portStrings = append(portStrings, portStr)
-		}
-	}
-
-	return strings.Join(portStrings, ", ")
-}

@@ -10,12 +10,14 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/filters"
+	"github.com/docker/docker/api/types/system"
 )
 
 // SystemModel manages the system view
 type SystemModel struct {
 	dockerClient *client.DockerClient
-	info         types.Info
+	info         system.Info // Use system.Info instead of types.Info
 	version      types.Version
 	diskUsage    types.DiskUsage
 	width        int
@@ -28,7 +30,7 @@ type SystemModel struct {
 
 // SystemInfoMsg contains system information
 type SystemInfoMsg struct {
-	Info    types.Info
+	Info    system.Info // Update this too
 	Version types.Version
 	Error   error
 }
@@ -61,10 +63,10 @@ func (m *SystemModel) Init() tea.Cmd {
 func (m *SystemModel) fetchSystemInfo() tea.Cmd {
 	return func() tea.Msg {
 		ctx := m.dockerClient.Ctx
-		info, err := m.dockerClient.Client.Info(ctx)
+		info, err := m.dockerClient.Client.Info(ctx) // No change needed here
 		if err != nil {
 			return SystemInfoMsg{
-				Info:    types.Info{},
+				Info:    system.Info{}, // Update to system.Info{}
 				Version: types.Version{},
 				Error:   err,
 			}
@@ -110,14 +112,33 @@ func (m *SystemModel) fetchDiskUsage() tea.Cmd {
 func (m *SystemModel) pruneSystem() tea.Cmd {
 	return func() tea.Msg {
 		ctx := m.dockerClient.Ctx
-		_, err := m.dockerClient.Client.SystemPrune(ctx, types.SystemPruneOptions{})
+		cli := m.dockerClient.Client
+
+		// Prune containers
+		_, err := cli.ContainersPrune(ctx, filters.NewArgs())
 		if err != nil {
-			return SystemInfoMsg{
-				Error: err,
-			}
+			return SystemInfoMsg{Error: err}
 		}
 
-		// Refresh after pruning
+		// Prune images
+		_, err = cli.ImagesPrune(ctx, filters.NewArgs())
+		if err != nil {
+			return SystemInfoMsg{Error: err}
+		}
+
+		// Prune networks
+		_, err = cli.NetworksPrune(ctx, filters.NewArgs())
+		if err != nil {
+			return SystemInfoMsg{Error: err}
+		}
+
+		// Prune volumes
+		_, err = cli.VolumesPrune(ctx, filters.NewArgs())
+		if err != nil {
+			return SystemInfoMsg{Error: err}
+		}
+
+		// Refresh disk usage after pruning
 		return m.fetchDiskUsage()()
 	}
 }

@@ -1,9 +1,9 @@
 package ui
 
 import (
+	"bytes"
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/Gostatsog/dockerNav/internal/client"
@@ -176,7 +176,7 @@ func (m *ImageModel) pullImage(imageName string) tea.Cmd {
 		defer reader.Close()
 
 		// We need to read the response to complete the pull
-		buf := new(strings.Builder)
+		buf := new(bytes.Buffer)
 		_, err = buf.ReadFrom(reader)
 		if err != nil {
 			return ImagePullMsg{Success: false, Error: err}

@@ -49,12 +49,21 @@ func (m *VolumeModel) fetchVolumes() tea.Cmd {
 		volumes, err := m.dockerClient.Client.VolumeList(ctx, volume.ListOptions{})
 		if err != nil {
 			return VolumeListMsg{
-				Volumes: []volume.Volume{},
+				Volumes: []volume.Volume{}, // Ensure an empty slice is returned on error
 				Error:   err,
 			}
 		}
+
+		// Convert []*volume.Volume to []volume.Volume
+		volumesList := make([]volume.Volume, len(volumes.Volumes))
+		for i, v := range volumes.Volumes {
+			if v != nil {
+				volumesList[i] = *v // Dereference the pointer
+			}
+		}
+
 		return VolumeListMsg{
-			Volumes: volumes.Volumes,
+			Volumes: volumesList,
 			Error:   nil,
 		}
 	}

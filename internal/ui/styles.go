@@ -88,4 +88,10 @@ var (
 	// Table row style
 	StyleTableRow = lipgloss.NewStyle().
 		Padding(0, 1)
+
+	StyleSubtle = lipgloss.NewStyle().
+		Foreground(ColorSubtle)
+
+	StyleHelp = lipgloss.NewStyle().
+		Foreground(ColorSubtle)
 )

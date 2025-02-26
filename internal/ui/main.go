@@ -91,7 +91,7 @@ func (m *MainModel) fetchDockerInfo() tea.Cmd {
 	return func() tea.Msg {
 		if m.dockerClient == nil {
 			return DockerInfoMsg{
-				Error: fmt.Errorf("Docker client not initialized"),
+				Error: fmt.Errorf("docker client not initialized"),
 			}
 		}
 
