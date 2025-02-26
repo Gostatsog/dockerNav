@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/Gostasog/dockerNav/internal/client"
-	"github.com/Gostasog/dockerNav/internal/menu"
+	"github.com/Gostatsog/dockerNav/internal/client"
+	"github.com/Gostatsog/dockerNav/internal/menu"
 )
 
 // App represents the main application
