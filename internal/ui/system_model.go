@@ -195,7 +195,7 @@ func (m *SystemModel) View() string {
 	}
 
 	if m.error != nil {
-		errorBox := StyleInfoBox.Copy().
+		errorBox := StyleInfoBox.
 			BorderForeground(ColorError).
 			Render(StyleError.Render("Error loading system info: " + m.error.Error()))
 		
@@ -279,8 +279,8 @@ func (m *SystemModel) renderMainView() string {
 		formatter.FormatSize(float64(m.diskUsage.LayersSize)), // Approximate
 	)
 	
-	infoBox := StyleInfoBox.Copy().Width(40).Render(infoContent)
-	usageBox := StyleInfoBox.Copy().Width(40).Render(usageContent)
+	infoBox := StyleInfoBox.Width(40).Render(infoContent)
+	usageBox := StyleInfoBox.Width(40).Render(usageContent)
 	
 	return lipgloss.JoinHorizontal(lipgloss.Top, infoBox, usageBox)
 }

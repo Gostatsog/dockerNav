@@ -75,7 +75,7 @@ var (
 		Bold(true)
 		
 	// Focused button style
-	StyleButtonFocused = StyleButton.Copy().
+	StyleButtonFocused = StyleButton.
 		Background(ColorHighlight)
 		
 	// Table header style

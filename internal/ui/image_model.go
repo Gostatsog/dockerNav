@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Gostatsog/dockerNav/internal/client"
@@ -105,11 +106,19 @@ type ImageModel struct {
 func NewImageModel(docker *client.DockerClient) *ImageModel {
 	keyMap := DefaultImageKeyMap()
 	
-	// Set up image list
+	// Set up image list with improved delegate styling
 	delegate := list.NewDefaultDelegate()
+	delegate.Styles.NormalTitle = lipgloss.NewStyle().Foreground(ColorText).Bold(true)
+	delegate.Styles.NormalDesc = lipgloss.NewStyle().Foreground(ColorSubtle)
+	delegate.Styles.SelectedTitle = lipgloss.NewStyle().Foreground(ColorPrimary).Bold(true)
+	delegate.Styles.SelectedDesc = lipgloss.NewStyle().Foreground(ColorText)
+	delegate.SetHeight(2) // Adjust if needed
+	
 	imageList := list.New([]list.Item{}, delegate, 0, 0)
 	imageList.Title = "Images"
 	imageList.Styles.Title = StyleTitle
+	imageList.SetShowStatusBar(true)
+	imageList.SetFilteringEnabled(true)
 	imageList.AdditionalFullHelpKeys = func() []key.Binding {
 		return []key.Binding{
 			keyMap.Refresh,
@@ -210,6 +219,7 @@ func (m *ImageModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
 	switch msg := msg.(type) {
+		
 	case tea.KeyMsg:
 		switch m.state {
 		case "list":
@@ -272,14 +282,26 @@ func (m *ImageModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		
-		// Update list dimensions
-		headerHeight := 6 // Adjust based on your layout
+		// Update list dimensions with better constraints
+		headerHeight := 6
 		footerHeight := 2
-		m.imageList.SetSize(msg.Width-4, msg.Height-headerHeight-footerHeight)
+		listHeight := m.height - headerHeight - footerHeight
+		if listHeight < 1 {
+			listHeight = 10 // Minimum height
+		}
+		
+		listWidth := m.width - 4
+		if listWidth < 10 {
+			listWidth = 40 // Minimum width
+		}
+		
+		m.imageList.SetSize(listWidth, listHeight)
 		
 		// Update viewport dimensions
-		m.viewport.Width = msg.Width - 4
-		m.viewport.Height = msg.Height - headerHeight - footerHeight
+		m.viewport.Width = m.width - 4
+		m.viewport.Height = m.height - headerHeight - footerHeight
+		
+		return m, nil
 
 	case spinner.TickMsg:
 		var cmd tea.Cmd
@@ -321,8 +343,7 @@ func (m *ImageModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			})
 		}
 		
-		var cmd tea.Cmd
-		m.imageList.SetItems(items)
+		cmd := m.imageList.SetItems(items)
 		return m, cmd
 		
 	case ImagePullMsg:
@@ -369,7 +390,7 @@ func (m *ImageModel) View() string {
 	}
 
 	if m.error != nil {
-		errorBox := StyleInfoBox.Copy().
+		errorBox := StyleInfoBox.
 			BorderForeground(ColorError).
 			Render(StyleError.Render(fmt.Sprintf("Error: %v", m.error)))
 		
@@ -386,12 +407,23 @@ func (m *ImageModel) View() string {
 	var content string
 	switch m.state {
 	case "list":
-		content = lipgloss.JoinVertical(lipgloss.Left,
-			StyleTitle.Render("Image Management"),
-			"",
-			m.imageList.View(),
-		)
-		
+		// Check if list view is empty
+		listView := m.imageList.View()
+		if strings.TrimSpace(listView) == "" {
+			content = lipgloss.JoinVertical(lipgloss.Left,
+				StyleTitle.Render("Image Management"),
+				"",
+				StyleInfoBox.Render("No images to display or list rendering issue."),
+				StyleFooter.Render("Press r to refresh, p to pull a new image"),
+			)
+		} else {
+			content = lipgloss.JoinVertical(lipgloss.Left,
+				StyleTitle.Render("Image Management"),
+				"",
+				listView,
+			)
+		}
+
 	case "pull":
 		inputBox := StyleInfoBox.Render(
 			lipgloss.JoinVertical(lipgloss.Left,
@@ -422,6 +454,13 @@ func (m *ImageModel) View() string {
 			"",
 			confirmBox,
 		)
+	}
+
+	if m.state == "list" {
+		helpText := StyleHelp.Render(
+			"r: Refresh • p: Pull • x: Remove • esc: Back",
+		)
+		content = lipgloss.JoinVertical(lipgloss.Left, content, "", helpText)
 	}
 
 	return StyleMainLayout.Render(content)

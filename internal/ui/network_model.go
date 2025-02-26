@@ -118,11 +118,19 @@ type NetworkModel struct {
 func NewNetworkModel(docker *client.DockerClient) *NetworkModel {
 	keyMap := DefaultNetworkKeyMap()
 	
-	// Set up network list
+	// Set up network list with improved delegate styling
 	delegate := list.NewDefaultDelegate()
+	delegate.Styles.NormalTitle = lipgloss.NewStyle().Foreground(ColorText).Bold(true)
+	delegate.Styles.NormalDesc = lipgloss.NewStyle().Foreground(ColorSubtle)
+	delegate.Styles.SelectedTitle = lipgloss.NewStyle().Foreground(ColorPrimary).Bold(true)
+	delegate.Styles.SelectedDesc = lipgloss.NewStyle().Foreground(ColorText)
+	delegate.SetHeight(2) // Adjust if needed
+	
 	networkList := list.New([]list.Item{}, delegate, 0, 0)
 	networkList.Title = "Networks"
 	networkList.Styles.Title = StyleTitle
+	networkList.SetShowStatusBar(true)
+	networkList.SetFilteringEnabled(true)
 	networkList.AdditionalFullHelpKeys = func() []key.Binding {
 		return []key.Binding{
 			keyMap.Refresh,
@@ -389,14 +397,26 @@ func (m *NetworkModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		
-		// Update list dimensions
-		headerHeight := 6 // Adjust based on your layout
+		// Update list dimensions with better constraints
+		headerHeight := 6
 		footerHeight := 2
-		m.networkList.SetSize(msg.Width-4, msg.Height-headerHeight-footerHeight)
+		listHeight := m.height - headerHeight - footerHeight
+		if listHeight < 1 {
+			listHeight = 10 // Minimum height
+		}
+		
+		listWidth := m.width - 4
+		if listWidth < 10 {
+			listWidth = 40 // Minimum width
+		}
+		
+		m.networkList.SetSize(listWidth, listHeight)
 		
 		// Update viewport dimensions
-		m.viewport.Width = msg.Width - 4
-		m.viewport.Height = msg.Height - headerHeight - footerHeight
+		m.viewport.Width = m.width - 4
+		m.viewport.Height = m.height - headerHeight - footerHeight
+		
+		return m, nil
 
 	case spinner.TickMsg:
 		var cmd tea.Cmd
@@ -425,8 +445,7 @@ func (m *NetworkModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			})
 		}
 		
-		var cmd tea.Cmd
-		m.networkList.SetItems(items)
+		cmd := m.networkList.SetItems(items)
 		return m, cmd
 		
 	case NetworkInspectMsg:
@@ -532,7 +551,7 @@ func (m *NetworkModel) View() string {
 	}
 
 	if m.error != nil {
-		errorBox := StyleInfoBox.Copy().
+		errorBox := StyleInfoBox.
 			BorderForeground(ColorError).
 			Render(StyleError.Render(fmt.Sprintf("Error: %v", m.error)))
 		
@@ -549,11 +568,22 @@ func (m *NetworkModel) View() string {
 	var content string
 	switch m.state {
 	case "list":
-		content = lipgloss.JoinVertical(lipgloss.Left,
-			StyleTitle.Render("Network Management"),
-			"",
-			m.networkList.View(),
-		)
+		// Check if list view is empty
+		listView := m.networkList.View()
+		if strings.TrimSpace(listView) == "" {
+			content = lipgloss.JoinVertical(lipgloss.Left,
+				StyleTitle.Render("Network Management"),
+				"",
+				StyleInfoBox.Render("No networks to display or list rendering issue."),
+				StyleFooter.Render("Press r to refresh, c to create a new network"),
+			)
+		} else {
+			content = lipgloss.JoinVertical(lipgloss.Left,
+				StyleTitle.Render("Network Management"),
+				"",
+				listView,
+			)
+		}
 		
 	case "inspect":
 		if m.inspectedNetwork != nil {
@@ -599,6 +629,14 @@ func (m *NetworkModel) View() string {
 			confirmBox,
 		)
 	}
+
+	if m.state == "list" {
+		helpText := StyleHelp.Render(
+			"r: Refresh • i: Inspect • c: Create • x: Remove • esc: Back",
+		)
+		content = lipgloss.JoinVertical(lipgloss.Left, content, "", helpText)
+	}
+
 
 	return StyleMainLayout.Render(content)
 }

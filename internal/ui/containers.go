@@ -126,11 +126,22 @@ type ContainerModel struct {
 func NewContainerModel(docker *client.DockerClient) *ContainerModel {
 	keyMap := DefaultContainerKeyMap()
 	
-	// Set up container list
+	// Set up container list with a more specific delegate
 	delegate := list.NewDefaultDelegate()
+	// Make sure titles and descriptions are set with proper styles
+	delegate.Styles.NormalTitle = lipgloss.NewStyle().Foreground(ColorText).Bold(true)
+	delegate.Styles.NormalDesc = lipgloss.NewStyle().Foreground(ColorSubtle)
+	delegate.Styles.SelectedTitle = lipgloss.NewStyle().Foreground(ColorPrimary).Bold(true)
+	delegate.Styles.SelectedDesc = lipgloss.NewStyle().Foreground(ColorText)
+	
+	// Ensure proper height for list items
+	delegate.SetHeight(2) // Adjust if you need more space
+	
 	containerList := list.New([]list.Item{}, delegate, 0, 0)
 	containerList.Title = "Containers"
 	containerList.Styles.Title = StyleTitle
+	containerList.SetShowStatusBar(true)  // Show status bar at the bottom
+	containerList.SetFilteringEnabled(true) // Enable filtering
 	containerList.AdditionalFullHelpKeys = func() []key.Binding {
 		return []key.Binding{
 			keyMap.Refresh,
@@ -351,20 +362,32 @@ func (m *ContainerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		
-		// Update list dimensions
+		// Update list dimensions - be more specific with dimensions
 		headerHeight := 6 // Adjust based on your layout
 		footerHeight := 2
-		m.containerList.SetSize(msg.Width-4, msg.Height-headerHeight-footerHeight)
+		listHeight := m.height - headerHeight - footerHeight
+		if listHeight < 1 {
+			listHeight = 10 // Fallback minimum
+		}
+		
+		listWidth := m.width - 4
+		if listWidth < 10 {
+			listWidth = 40 // Fallback minimum
+		}
+		
+		m.containerList.SetSize(listWidth, listHeight)
 		
 		// Update viewport dimensions
-		m.viewport.Width = msg.Width - 4
-		m.viewport.Height = msg.Height - headerHeight - footerHeight
+		m.viewport.Width = m.width - 4
+		m.viewport.Height = m.height - headerHeight - footerHeight
 		
 		// Update create model dimensions if active
 		if m.createModel != nil {
 			m.createModel.width = msg.Width
 			m.createModel.height = msg.Height
 		}
+		
+		return m, nil
 
 	case spinner.TickMsg:
 		var cmd tea.Cmd
@@ -412,8 +435,7 @@ func (m *ContainerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			})
 		}
 		
-		var cmd tea.Cmd
-		m.containerList.SetItems(items)
+		cmd := m.containerList.SetItems(items)
 		return m, cmd
 		
 	case ContainerLogsMsg:
@@ -453,6 +475,7 @@ func (m *ContainerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, cmd)
 	}
 	
+	
 	// Update create model if it exists
 	if m.state == "create" && m.createModel != nil {
 		var cmd tea.Cmd
@@ -478,7 +501,7 @@ func (m *ContainerModel) View() string {
 	}
 
 	if m.error != nil {
-		errorBox := StyleInfoBox.Copy().
+		errorBox := StyleInfoBox.
 			BorderForeground(ColorError).
 			Render(StyleError.Render(fmt.Sprintf("Error: %v", m.error)))
 		

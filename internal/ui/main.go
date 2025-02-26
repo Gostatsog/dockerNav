@@ -250,7 +250,7 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // View renders the current view
 func (m *MainModel) View() string {
 	if m.error != nil {
-		errorBox := StyleInfoBox.Copy().
+		errorBox := StyleInfoBox.
 			BorderForeground(ColorError).
 			Render(StyleError.Render("Error connecting to Docker: " + m.error.Error()))
 		

@@ -359,7 +359,7 @@ func (m *ContainerCreateModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // View renders the current view
 func (m *ContainerCreateModel) View() string {
 	if m.error != nil {
-		errorBox := StyleInfoBox.Copy().
+		errorBox := StyleInfoBox.
 			BorderForeground(ColorError).
 			Render(StyleError.Render(fmt.Sprintf("Error: %v", m.error)))
 		
@@ -374,7 +374,7 @@ func (m *ContainerCreateModel) View() string {
 	}
 	
 	if m.result != "" {
-		successBox := StyleInfoBox.Copy().
+		successBox := StyleInfoBox.
 			BorderForeground(ColorSuccess).
 			Render(StyleSuccess.Render(m.result))
 		
