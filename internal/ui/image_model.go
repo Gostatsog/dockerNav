@@ -159,7 +159,26 @@ func NewImageModel(docker *client.DockerClient) *ImageModel {
 
 // Init initializes the model
 func (m *ImageModel) Init() tea.Cmd {
-	return tea.Batch(m.fetchImages(), m.spin.Tick)
+    // Initialize dimensions for the list view
+    headerHeight := 6
+    footerHeight := 2
+    listHeight := m.height - headerHeight - footerHeight
+    if listHeight < 1 {
+        listHeight = 10 // Minimum height
+    }
+    
+    listWidth := m.width - 4
+    if listWidth < 10 {
+        listWidth = 40 // Minimum width
+    }
+    
+    m.imageList.SetSize(listWidth, listHeight)
+    
+    // Update viewport dimensions
+    m.viewport.Width = m.width - 4
+    m.viewport.Height = m.height - headerHeight - footerHeight
+    
+    return tea.Batch(m.fetchImages(), m.spin.Tick)
 }
 
 // fetchImages returns a command that fetches image data

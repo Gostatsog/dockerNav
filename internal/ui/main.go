@@ -54,31 +54,52 @@ type MainModel struct {
 
 // NewMainModel creates and initializes the main model
 func NewMainModel(width, height int) tea.Model {
-	// Create Docker client, etc.
-	dockerClient, err := client.NewDockerClient(context.Background())
-	if err != nil {
-		return &MainModel{
-			error:   err,
-			loading: false,
-		}
-	}
+    // Create Docker client, etc.
+    dockerClient, err := client.NewDockerClient(context.Background())
+    if err != nil {
+        return &MainModel{
+            error:   err,
+            loading: false,
+            width:   width,
+            height:  height,
+        }
+    }
 
-	m := &MainModel{
-		dockerClient: dockerClient,
-		currentView:  ViewMain,
-		width:        width,
-		height:       height,
-		loading:      true,
-	}
+    // Initialize sub-models with the proper dimensions
+    containers := NewContainerModel(dockerClient)
+    containers.width = width
+    containers.height = height
+    
+    images := NewImageModel(dockerClient)
+    images.width = width
+    images.height = height
+    
+    networks := NewNetworkModel(dockerClient)
+    networks.width = width
+    networks.height = height
+    
+    volumes := NewVolumeModel(dockerClient)
+    volumes.width = width
+    volumes.height = height
+    
+    system := NewSystemModel(dockerClient)
+    system.width = width
+    system.height = height
 
-	// Initialize sub-models with default dimensions if needed.
-	m.containers = NewContainerModel(dockerClient)
-	m.images = NewImageModel(dockerClient)
-	m.networks = NewNetworkModel(dockerClient)
-	m.volumes = NewVolumeModel(dockerClient)
-	m.system = NewSystemModel(dockerClient)
+    m := &MainModel{
+        dockerClient: dockerClient,
+        currentView:  ViewMain,
+        width:        width,
+        height:       height,
+        loading:      true,
+        containers:   containers,
+        images:       images,
+        networks:     networks,
+        volumes:      volumes,
+        system:       system,
+    }
 
-	return m
+    return m
 }
 
 // Init implements tea.Model and returns the initial command
@@ -126,7 +147,6 @@ func (m *MainModel) fetchDockerInfo() tea.Cmd {
 	}
 }
 
-// Update handles messages and updates the model
 func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	var cmds []tea.Cmd
@@ -139,23 +159,63 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "1":
 			m.currentView = ViewContainers
-			return m, m.containers.Init()
+			// Send a window size message to ensure proper initialization
+			cmds = append(cmds, func() tea.Msg {
+				return tea.WindowSizeMsg{
+					Width:  m.width,
+					Height: m.height,
+				}
+			})
+			cmds = append(cmds, m.containers.Init())
+			return m, tea.Batch(cmds...)
 
 		case "2":
 			m.currentView = ViewImages
-			return m, m.images.Init()
+			// Send a window size message to ensure proper initialization
+			cmds = append(cmds, func() tea.Msg {
+				return tea.WindowSizeMsg{
+					Width:  m.width,
+					Height: m.height,
+				}
+			})
+			cmds = append(cmds, m.images.Init())
+			return m, tea.Batch(cmds...)
 
 		case "3":
 			m.currentView = ViewNetworks
-			return m, m.networks.Init()
+			// Send a window size message to ensure proper initialization
+			cmds = append(cmds, func() tea.Msg {
+				return tea.WindowSizeMsg{
+					Width:  m.width,
+					Height: m.height,
+				}
+			})
+			cmds = append(cmds, m.networks.Init())
+			return m, tea.Batch(cmds...)
 
 		case "4":
 			m.currentView = ViewVolumes
-			return m, m.volumes.Init()
+			// Send a window size message to ensure proper initialization
+			cmds = append(cmds, func() tea.Msg {
+				return tea.WindowSizeMsg{
+					Width:  m.width,
+					Height: m.height,
+				}
+			})
+			cmds = append(cmds, m.volumes.Init())
+			return m, tea.Batch(cmds...)
 
 		case "5":
 			m.currentView = ViewSystem
-			return m, m.system.Init()
+			// Send a window size message to ensure proper initialization
+			cmds = append(cmds, func() tea.Msg {
+				return tea.WindowSizeMsg{
+					Width:  m.width,
+					Height: m.height,
+				}
+			})
+			cmds = append(cmds, m.system.Init())
+			return m, tea.Batch(cmds...)
 
 		case "0", "esc":
 			if m.currentView != ViewMain {
@@ -247,6 +307,7 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	return m, tea.Batch(cmds...)
 }
+
 
 // View renders the current view
 func (m *MainModel) View() string {

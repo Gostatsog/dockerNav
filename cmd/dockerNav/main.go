@@ -1,3 +1,4 @@
+// cmd/dockerNav/main.go
 package main
 
 import (
@@ -21,8 +22,12 @@ func main() {
 	// Initialize the main model with actual dimensions.
 	m := ui.NewMainModel(width, height)
 	
-	// Initialize the Bubble Tea program.
-	p := tea.NewProgram(m, tea.WithAltScreen())
+	// Initialize the Bubble Tea program with options for proper window sizing
+	p := tea.NewProgram(
+		m,
+		tea.WithAltScreen(),
+		tea.WithMouseCellMotion(), // Add mouse support for more responsive resizing
+	)
 
 	// Run the program.
 	if _, err := p.Run(); err != nil {

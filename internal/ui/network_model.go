@@ -182,7 +182,26 @@ func NewNetworkModel(docker *client.DockerClient) *NetworkModel {
 
 // Init initializes the model
 func (m *NetworkModel) Init() tea.Cmd {
-	return tea.Batch(m.fetchNetworks(), m.spin.Tick)
+    // Initialize dimensions for the list view
+    headerHeight := 6
+    footerHeight := 2
+    listHeight := m.height - headerHeight - footerHeight
+    if listHeight < 1 {
+        listHeight = 10 // Minimum height
+    }
+    
+    listWidth := m.width - 4
+    if listWidth < 10 {
+        listWidth = 40 // Minimum width
+    }
+    
+    m.networkList.SetSize(listWidth, listHeight)
+    
+    // Update viewport dimensions
+    m.viewport.Width = m.width - 4
+    m.viewport.Height = m.height - headerHeight - footerHeight
+    
+    return tea.Batch(m.fetchNetworks(), m.spin.Tick)
 }
 
 // fetchNetworks returns a command that fetches network data

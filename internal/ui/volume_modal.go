@@ -105,7 +105,22 @@ func NewVolumeModel(dockerClient *client.DockerClient) *VolumeModel {
 
 // Init initializes the model
 func (m *VolumeModel) Init() tea.Cmd {
-	return tea.Batch(m.fetchVolumes(), m.spinner.Tick)
+    // Initialize dimensions for the list view
+    headerHeight := 6
+    footerHeight := 2
+    listHeight := m.height - headerHeight - footerHeight
+    if listHeight < 1 {
+        listHeight = 10 // Minimum height
+    }
+    
+    listWidth := m.width - 4
+    if listWidth < 10 {
+        listWidth = 40 // Minimum width
+    }
+    
+    m.volumeList.SetSize(listWidth, listHeight)
+    
+    return tea.Batch(m.fetchVolumes(), m.spinner.Tick)
 }
 
 // DefaultVolumeKeyMap returns default volume keybindings
