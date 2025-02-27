@@ -53,11 +53,10 @@ type MainModel struct {
 }
 
 // NewMainModel creates and initializes the main model
-func NewMainModel() tea.Model {
-	// Create Docker client
+func NewMainModel(width, height int) tea.Model {
+	// Create Docker client, etc.
 	dockerClient, err := client.NewDockerClient(context.Background())
 	if err != nil {
-		// If we can't connect to Docker, we'll show an error after initialization
 		return &MainModel{
 			error:   err,
 			loading: false,
@@ -67,10 +66,12 @@ func NewMainModel() tea.Model {
 	m := &MainModel{
 		dockerClient: dockerClient,
 		currentView:  ViewMain,
+		width:        width,
+		height:       height,
 		loading:      true,
 	}
 
-	// Initialize sub-models for each view
+	// Initialize sub-models with default dimensions if needed.
 	m.containers = NewContainerModel(dockerClient)
 	m.images = NewImageModel(dockerClient)
 	m.networks = NewNetworkModel(dockerClient)

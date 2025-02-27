@@ -16,11 +16,64 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/network"
 )
+
+type Port struct {
+	// Host IP address that the container's port is mapped to
+	IP string `json:"IP,omitempty"`
+
+	// Port on the container
+	// Required: true
+	PrivatePort uint16 `json:"PrivatePort"`
+
+	// Port exposed on the host
+	PublicPort uint16 `json:"PublicPort,omitempty"`
+
+	// type
+	// Required: true
+	Type string `json:"Type"`
+}
+
+type MountPoint struct {
+	Type        string `json:"Type"`
+	Name        string `json:"Name"`
+	Source      string `json:"Source"`
+	Destination string `json:"Destination"`
+	Driver      string `json:"Driver"`
+	Mode        string `json:"Mode"`
+	RW          bool   `json:"RW"`
+	Propagation string `json:"Propagation"`
+}
+
+type NetworkSettingsSummary struct {
+	Networks map[string]*network.EndpointSettings
+}
+
+type Summary struct {
+	ID                      string                `json:"Id"`
+	Names                   []string              `json:"Names"`
+	Image                   string                `json:"Image"`
+	ImageID                 string                `json:"ImageID"`
+	Command                 string                `json:"Command"`
+	Created                 int64                 `json:"Created"`
+	Ports                   []Port                `json:"Ports"`
+	SizeRw                  int64                 `json:"SizeRw,omitempty"`
+	SizeRootFs              int64                 `json:"SizeRootFs,omitempty"`
+	Labels                  map[string]string     `json:"Labels"`
+	State                   string                `json:"State"`
+	Status                  string                `json:"Status"`
+	HostConfig              struct {
+		NetworkMode string            `json:"NetworkMode,omitempty"`
+		Annotations map[string]string `json:"Annotations,omitempty"`
+	} `json:"HostConfig"`
+	NetworkSettings *NetworkSettingsSummary `json:"NetworkSettings"`
+	Mounts          []MountPoint            `json:"Mounts"`
+}
 
 // ContainerListMsg carries container data after fetching
 type ContainerListMsg struct {
-	Containers []container.Summary
+	Containers []Summary
 	Error      error
 }
 
@@ -39,7 +92,7 @@ type ContainerLogsMsg struct {
 
 // ContainerItem represents a container in the list
 type ContainerItem struct {
-	container container.Summary
+	container Summary
 	title     string
 	desc      string
 }
@@ -107,7 +160,7 @@ func DefaultContainerKeyMap() ContainerKeyMap {
 type ContainerModel struct {
 	docker       *client.DockerClient
 	containerList list.Model
-	selectedContainer *container.Summary
+	selectedContainer *Summary
 	keyMap       ContainerKeyMap
 	state        string // "list", "logs", "confirm", "create"
 	width        int
@@ -180,7 +233,72 @@ func NewContainerModel(docker *client.DockerClient) *ContainerModel {
 
 // Init initializes the model
 func (m *ContainerModel) Init() tea.Cmd {
-	return tea.Batch(m.fetchContainers(), m.spinner.Tick)
+
+    return tea.Batch(
+        m.fetchContainers(),
+        m.spinner.Tick,
+    )
+}
+
+func convertPorts(ports []container.Port) []Port {
+	newPorts := make([]Port, len(ports))
+	for i, p := range ports {
+		newPorts[i] = Port{
+			IP:          p.IP,
+			PrivatePort: p.PrivatePort,
+			PublicPort:  p.PublicPort,
+			Type:        p.Type,
+		}
+	}
+	return newPorts
+}
+
+func convertMounts(mounts []container.MountPoint) []MountPoint {
+	newMounts := make([]MountPoint, len(mounts))
+	for i, m := range mounts {
+		newMounts[i] = MountPoint{
+			Type:        string(m.Type),
+			Name:        m.Name,
+			Source:      m.Source,
+			Destination: m.Destination,
+			Driver:      m.Driver,
+			Mode:        m.Mode,
+			RW:          m.RW,
+			Propagation: string(m.Propagation),
+		}
+	}
+	return newMounts
+}
+
+func containerSummaryToSummary(c container.Summary) Summary {
+	var networkSettings *NetworkSettingsSummary
+	if c.NetworkSettings != nil {
+		networkSettings = &NetworkSettingsSummary{Networks: c.NetworkSettings.Networks}
+	}
+
+	return Summary{
+		ID:         c.ID,
+		Names:      c.Names,
+		Image:      c.Image,
+		ImageID:    c.ImageID,
+		Command:    c.Command,
+		Created:    c.Created,
+		Ports:      convertPorts(c.Ports),
+		SizeRw:     c.SizeRw,
+		SizeRootFs: c.SizeRootFs,
+		Labels:     c.Labels,
+		State:      c.State,
+		Status:     c.Status,
+		HostConfig: struct {
+			NetworkMode string            `json:"NetworkMode,omitempty"`
+			Annotations map[string]string `json:"Annotations,omitempty"`
+		}{
+			NetworkMode: c.HostConfig.NetworkMode,
+			Annotations: c.HostConfig.Annotations,
+		},
+		NetworkSettings: networkSettings,
+		Mounts:          convertMounts(c.Mounts),
+	}
 }
 
 // fetchContainers returns a command that fetches container data
@@ -188,8 +306,12 @@ func (m *ContainerModel) fetchContainers() tea.Cmd {
 	return func() tea.Msg {
 		ctx := context.Background()
 		containers, err := m.docker.Client.ContainerList(ctx, container.ListOptions{All: m.showAll})
+		summaries := make([]Summary, len(containers))
+		for i, c := range containers {
+			summaries[i] = containerSummaryToSummary(c)
+		}
 		return ContainerListMsg{
-			Containers: containers,
+			Containers: summaries,
 			Error:      err,
 		}
 	}
@@ -408,6 +530,7 @@ func (m *ContainerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			createdTime := time.Unix(c.Created, 0)
 			created := formatter.FormatTime(createdTime)
 			
+			
 			// Include state in description using color formatting
 			stateStyle := StyleTableRow
 			switch c.State {
@@ -427,7 +550,7 @@ func (m *ContainerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				created,
 				status,
 			)
-			
+
 			items = append(items, ContainerItem{
 				container: c,
 				title:     name,

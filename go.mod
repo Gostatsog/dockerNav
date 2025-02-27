@@ -9,6 +9,7 @@ require (
 	github.com/charmbracelet/lipgloss v1.0.0
 	github.com/docker/docker v28.0.1+incompatible
 	github.com/docker/go-connections v0.5.0
+	golang.org/x/term v0.29.0
 )
 
 require (
