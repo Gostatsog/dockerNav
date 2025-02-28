@@ -61,11 +61,12 @@ func (i NetworkItem) Description() string { return i.desc }
 
 // NetworkKeyMap defines keybindings for network operations
 type NetworkKeyMap struct {
-	Refresh  key.Binding
-	Inspect  key.Binding
-	Create   key.Binding
-	Remove   key.Binding
-	Back     key.Binding
+	Refresh key.Binding
+	Inspect key.Binding
+	Create  key.Binding
+	Remove  key.Binding
+	Back    key.Binding
+	MainMenu key.Binding
 }
 
 // DefaultNetworkKeyMap returns default network keybindings
@@ -91,33 +92,37 @@ func DefaultNetworkKeyMap() NetworkKeyMap {
 			key.WithKeys("esc", "backspace"),
 			key.WithHelp("esc", "back"),
 		),
+		MainMenu: key.NewBinding(
+			key.WithKeys("m"),
+			key.WithHelp("m", "main menu"),
+		),
 	}
 }
 
 // NetworkModel manages network view state
 type NetworkModel struct {
-	docker        *client.DockerClient
-	networkList   list.Model
-	keyMap        NetworkKeyMap
-	state         string // "list", "inspect", "create", "confirm"
-	width         int
-	height        int
-	spin          spinner.Model
-	viewport      viewport.Model
-	textInputs    []textinput.Model
-	selectedNetwork *network.Summary
+	docker           *client.DockerClient
+	networkList      list.Model
+	keyMap           NetworkKeyMap
+	state            string // "list", "inspect", "create", "confirm"
+	width            int
+	height           int
+	spin             spinner.Model
+	viewport         viewport.Model
+	textInputs       []textinput.Model
+	selectedNetwork  *network.Summary
 	inspectedNetwork *network.Inspect
-	confirmMsg      string
-	confirmAction   string
-	loading       bool
-	focusIndex    int // For managing focus between input fields
-	error         error
+	confirmMsg       string
+	confirmAction    string
+	loading          bool
+	focusIndex       int // For managing focus between input fields
+	error            error
 }
 
 // NewNetworkModel creates a new network model
 func NewNetworkModel(docker *client.DockerClient) *NetworkModel {
 	keyMap := DefaultNetworkKeyMap()
-	
+
 	// Set up network list with improved delegate styling
 	delegate := list.NewDefaultDelegate()
 	delegate.Styles.NormalTitle = lipgloss.NewStyle().Foreground(ColorText).Bold(true)
@@ -125,7 +130,7 @@ func NewNetworkModel(docker *client.DockerClient) *NetworkModel {
 	delegate.Styles.SelectedTitle = lipgloss.NewStyle().Foreground(ColorPrimary).Bold(true)
 	delegate.Styles.SelectedDesc = lipgloss.NewStyle().Foreground(ColorText)
 	delegate.SetHeight(2) // Adjust if needed
-	
+
 	networkList := list.New([]list.Item{}, delegate, 0, 0)
 	networkList.Title = "Networks"
 	networkList.Styles.Title = StyleTitle
@@ -138,6 +143,7 @@ func NewNetworkModel(docker *client.DockerClient) *NetworkModel {
 			keyMap.Create,
 			keyMap.Remove,
 			keyMap.Back,
+			keyMap.MainMenu,
 		}
 	}
 
@@ -152,12 +158,12 @@ func NewNetworkModel(docker *client.DockerClient) *NetworkModel {
 		inputs[i] = textinput.New()
 		inputs[i].Width = 40
 	}
-	
+
 	inputs[0].Placeholder = "Network Name"
 	inputs[0].Focus()
 	inputs[0].PromptStyle = lipgloss.NewStyle().Foreground(ColorPrimary)
 	inputs[0].TextStyle = lipgloss.NewStyle().Foreground(ColorText)
-	
+
 	inputs[1].Placeholder = "Driver (bridge, overlay, etc.)"
 	inputs[1].PromptStyle = lipgloss.NewStyle().Foreground(ColorPrimary)
 	inputs[1].TextStyle = lipgloss.NewStyle().Foreground(ColorText)
@@ -182,26 +188,26 @@ func NewNetworkModel(docker *client.DockerClient) *NetworkModel {
 
 // Init initializes the model
 func (m *NetworkModel) Init() tea.Cmd {
-    // Initialize dimensions for the list view
-    headerHeight := 6
-    footerHeight := 2
-    listHeight := m.height - headerHeight - footerHeight
-    if listHeight < 1 {
-        listHeight = 10 // Minimum height
-    }
-    
-    listWidth := m.width - 4
-    if listWidth < 10 {
-        listWidth = 40 // Minimum width
-    }
-    
-    m.networkList.SetSize(listWidth, listHeight)
-    
-    // Update viewport dimensions
-    m.viewport.Width = m.width - 4
-    m.viewport.Height = m.height - headerHeight - footerHeight
-    
-    return tea.Batch(m.fetchNetworks(), m.spin.Tick)
+	// Initialize dimensions for the list view
+	headerHeight := 6
+	footerHeight := 2
+	listHeight := m.height - headerHeight - footerHeight
+	if listHeight < 1 {
+		listHeight = 10 // Minimum height
+	}
+
+	listWidth := m.width - 4
+	if listWidth < 10 {
+		listWidth = 40 // Minimum width
+	}
+
+	m.networkList.SetSize(listWidth, listHeight)
+
+	// Update viewport dimensions
+	m.viewport.Width = m.width - 4
+	m.viewport.Height = m.height - headerHeight - footerHeight
+
+	return tea.Batch(m.fetchNetworks(), m.spin.Tick)
 }
 
 // fetchNetworks returns a command that fetches network data
@@ -232,22 +238,22 @@ func (m *NetworkModel) inspectNetwork(networkID string) tea.Cmd {
 func (m *NetworkModel) createNetwork(name, driver string) tea.Cmd {
 	return func() tea.Msg {
 		ctx := context.Background()
-		
+
 		options := network.CreateOptions{
 			Driver: driver,
 		}
-		
+
 		// Set default driver if not specified
 		if driver == "" {
 			options.Driver = "bridge"
 		}
-		
+
 		response, err := m.docker.Client.NetworkCreate(ctx, name, options)
-		
+
 		if err != nil {
 			return NetworkCreateMsg{Success: false, Error: err}
 		}
-		
+
 		return NetworkCreateMsg{Success: true, ID: response.ID, Error: nil}
 	}
 }
@@ -257,12 +263,12 @@ func (m *NetworkModel) performNetworkAction(action string, networkID string) tea
 	return func() tea.Msg {
 		ctx := context.Background()
 		var err error
-		
+
 		switch action {
 		case "remove":
 			err = m.docker.Client.NetworkRemove(ctx, networkID)
 		}
-		
+
 		return NetworkActionMsg{
 			Action:    action,
 			NetworkID: networkID,
@@ -274,24 +280,24 @@ func (m *NetworkModel) performNetworkAction(action string, networkID string) tea
 // updateInputs updates the focus of text inputs
 func (m *NetworkModel) updateInputs(msg tea.Msg) tea.Cmd {
 	cmds := make([]tea.Cmd, len(m.textInputs))
-	
+
 	// Update all text inputs
 	for i := range m.textInputs {
 		m.textInputs[i].PromptStyle = lipgloss.NewStyle().Foreground(ColorSubtle)
 		m.textInputs[i].TextStyle = lipgloss.NewStyle().Foreground(ColorText)
 	}
-	
+
 	// Set focus on the current input
 	if m.focusIndex < len(m.textInputs) {
 		m.textInputs[m.focusIndex].PromptStyle = lipgloss.NewStyle().Foreground(ColorPrimary)
 		m.textInputs[m.focusIndex].TextStyle = lipgloss.NewStyle().Foreground(ColorPrimary)
-		
+
 		// Only update the focused input
 		var cmd tea.Cmd
 		m.textInputs[m.focusIndex], cmd = m.textInputs[m.focusIndex].Update(msg)
 		cmds[m.focusIndex] = cmd
 	}
-	
+
 	return tea.Batch(cmds...)
 }
 
@@ -304,10 +310,22 @@ func (m *NetworkModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch m.state {
 		case "list":
 			switch {
+			case key.Matches(msg, m.keyMap.Back):
+				// Only return to main menu from the list view
+				return m, func() tea.Msg {
+					return ReturnToMainMsg{}
+				}
+				
+			case key.Matches(msg, m.keyMap.MainMenu):
+				// Return to main menu from any state
+				return m, func() tea.Msg {
+					return ReturnToMainMsg{}
+				}
+
 			case key.Matches(msg, m.keyMap.Refresh):
 				m.loading = true
 				return m, tea.Batch(m.fetchNetworks(), m.spin.Tick)
-				
+
 			case key.Matches(msg, m.keyMap.Inspect):
 				if item, ok := m.networkList.SelectedItem().(NetworkItem); ok {
 					m.selectedNetwork = &item.network
@@ -315,14 +333,14 @@ func (m *NetworkModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.loading = true
 					return m, tea.Batch(m.inspectNetwork(item.network.ID), m.spin.Tick)
 				}
-				
+
 			case key.Matches(msg, m.keyMap.Create):
 				m.state = "create"
 				m.focusIndex = 0
 				m.textInputs[0].Focus()
 				m.textInputs[1].Blur()
 				return m, nil
-				
+
 			case key.Matches(msg, m.keyMap.Remove):
 				if item, ok := m.networkList.SelectedItem().(NetworkItem); ok {
 					m.selectedNetwork = &item.network
@@ -332,7 +350,7 @@ func (m *NetworkModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, nil
 				}
 			}
-			
+
 		case "inspect":
 			switch {
 			case key.Matches(msg, m.keyMap.Back):
@@ -345,7 +363,7 @@ func (m *NetworkModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.viewport, cmd = m.viewport.Update(msg)
 				return m, cmd
 			}
-			
+
 		case "create":
 			switch msg.String() {
 			case "tab", "shift+tab":
@@ -355,7 +373,7 @@ func (m *NetworkModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				} else {
 					m.focusIndex = (m.focusIndex - 1 + len(m.textInputs)) % len(m.textInputs)
 				}
-				
+
 				// Update input focus
 				for i := range m.textInputs {
 					if i == m.focusIndex {
@@ -364,28 +382,28 @@ func (m *NetworkModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.textInputs[i].Blur()
 					}
 				}
-				
+
 				return m, nil
-				
+
 			case "enter":
 				// Create the network
 				networkName := m.textInputs[0].Value()
 				driver := m.textInputs[1].Value()
-				
+
 				if networkName == "" {
 					return m, nil
 				}
-				
+
 				m.loading = true
 				m.state = "list"
-				
+
 				// Reset inputs
 				for i := range m.textInputs {
 					m.textInputs[i].Reset()
 				}
-				
+
 				return m, tea.Batch(m.createNetwork(networkName, driver), m.spin.Tick)
-				
+
 			case "esc":
 				m.state = "list"
 				// Reset inputs
@@ -393,12 +411,12 @@ func (m *NetworkModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.textInputs[i].Reset()
 				}
 				return m, nil
-				
+
 			default:
 				// Update the inputs
 				return m, m.updateInputs(msg)
 			}
-			
+
 		case "confirm":
 			switch msg.String() {
 			case "y", "Y":
@@ -415,7 +433,7 @@ func (m *NetworkModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		
+
 		// Update list dimensions with better constraints
 		headerHeight := 6
 		footerHeight := 2
@@ -423,18 +441,18 @@ func (m *NetworkModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if listHeight < 1 {
 			listHeight = 10 // Minimum height
 		}
-		
+
 		listWidth := m.width - 4
 		if listWidth < 10 {
 			listWidth = 40 // Minimum width
 		}
-		
+
 		m.networkList.SetSize(listWidth, listHeight)
-		
+
 		// Update viewport dimensions
 		m.viewport.Width = m.width - 4
 		m.viewport.Height = m.height - headerHeight - footerHeight
-		
+
 		return m, nil
 
 	case spinner.TickMsg:
@@ -456,17 +474,17 @@ func (m *NetworkModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				net.Driver,
 				net.Scope,
 			)
-			
+
 			items = append(items, NetworkItem{
 				network: net,
 				title:   net.Name,
 				desc:    desc,
 			})
 		}
-		
+
 		cmd := m.networkList.SetItems(items)
 		return m, cmd
-		
+
 	case NetworkInspectMsg:
 		m.loading = false
 		if msg.Error != nil {
@@ -474,9 +492,9 @@ func (m *NetworkModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.state = "list"
 			return m, nil
 		}
-		
+
 		m.inspectedNetwork = &msg.Network
-		
+
 		// Format network details for display
 		var detailsBuilder strings.Builder
 		detailsBuilder.WriteString(fmt.Sprintf("Name: %s\n", msg.Network.Name))
@@ -488,11 +506,11 @@ func (m *NetworkModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		detailsBuilder.WriteString(fmt.Sprintf("Enable IPv6: %v\n", msg.Network.EnableIPv6))
 		detailsBuilder.WriteString(fmt.Sprintf("Attachable: %v\n", msg.Network.Attachable))
 		detailsBuilder.WriteString(fmt.Sprintf("Ingress: %v\n", msg.Network.Ingress))
-		
+
 		// IPAM Configuration
 		detailsBuilder.WriteString("\nIPAM Configuration:\n")
 		detailsBuilder.WriteString(fmt.Sprintf("  Driver: %s\n", msg.Network.IPAM.Driver))
-		
+
 		for i, conf := range msg.Network.IPAM.Config {
 			detailsBuilder.WriteString(fmt.Sprintf("  Config %d:\n", i+1))
 			if conf.Subnet != "" {
@@ -505,7 +523,7 @@ func (m *NetworkModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				detailsBuilder.WriteString(fmt.Sprintf("    IP Range: %s\n", conf.IPRange))
 			}
 		}
-		
+
 		// Connected Containers
 		detailsBuilder.WriteString("\nConnected Containers:\n")
 		if len(msg.Network.Containers) > 0 {
@@ -521,28 +539,28 @@ func (m *NetworkModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			detailsBuilder.WriteString("  No containers connected\n")
 		}
-		
+
 		m.viewport.SetContent(detailsBuilder.String())
 		m.viewport.GotoTop()
 		return m, nil
-		
+
 	case NetworkCreateMsg:
 		m.loading = false
 		if msg.Error != nil {
 			m.error = msg.Error
 			return m, nil
 		}
-		
+
 		// Refresh network list after successful creation
 		return m, m.fetchNetworks()
-		
+
 	case NetworkActionMsg:
 		m.loading = false
 		if msg.Error != nil {
 			m.error = msg.Error
 			return m, nil
 		}
-		
+
 		// Refresh network list after successful action
 		m.state = "list"
 		return m, m.fetchNetworks()
@@ -573,12 +591,12 @@ func (m *NetworkModel) View() string {
 		errorBox := StyleInfoBox.
 			BorderForeground(ColorError).
 			Render(StyleError.Render(fmt.Sprintf("Error: %v", m.error)))
-		
+
 		help := "Press r to retry, esc to go back"
 		return StyleMainLayout.Render(
 			lipgloss.JoinVertical(lipgloss.Left,
 				StyleTitle.Render("Network Management"),
-				errorBox, 
+				errorBox,
 				help,
 			),
 		)
@@ -603,18 +621,18 @@ func (m *NetworkModel) View() string {
 				listView,
 			)
 		}
-		
+
 	case "inspect":
 		if m.inspectedNetwork != nil {
 			title := fmt.Sprintf("Network Details: %s", m.inspectedNetwork.Name)
-			
+
 			content = lipgloss.JoinVertical(lipgloss.Left,
 				StyleTitle.Render(title),
 				m.viewport.View(),
 				StyleFooter.Render("Press esc to go back"),
 			)
 		}
-		
+
 	case "create":
 		inputBox := StyleInfoBox.Render(
 			lipgloss.JoinVertical(lipgloss.Left,
@@ -626,13 +644,13 @@ func (m *NetworkModel) View() string {
 				"Tab: Next Field • Enter: Create • Esc: Cancel",
 			),
 		)
-		
+
 		content = lipgloss.JoinVertical(lipgloss.Left,
 			StyleTitle.Render("Create Network"),
 			"",
 			inputBox,
 		)
-		
+
 	case "confirm":
 		confirmBox := StyleInfoBox.Render(
 			lipgloss.JoinVertical(lipgloss.Left,
@@ -641,7 +659,7 @@ func (m *NetworkModel) View() string {
 				"Press (y)es to confirm or (n)o to cancel",
 			),
 		)
-		
+
 		content = lipgloss.JoinVertical(lipgloss.Left,
 			StyleTitle.Render("Confirm Action"),
 			"",
@@ -651,11 +669,10 @@ func (m *NetworkModel) View() string {
 
 	if m.state == "list" {
 		helpText := StyleHelp.Render(
-			"r: Refresh • i: Inspect • c: Create • x: Remove • esc: Back",
+			"r: Refresh • i: Inspect • c: Create • x: Remove • esc: Back • m: Main Menu",
 		)
 		content = lipgloss.JoinVertical(lipgloss.Left, content, "", helpText)
 	}
-
 
 	return StyleMainLayout.Render(content)
 }

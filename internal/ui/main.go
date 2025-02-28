@@ -12,6 +12,8 @@ import (
 	"github.com/docker/docker/api/types/image"
 )
 
+type ReturnToMainMsg struct{}
+
 // DockerInfoMsg contains Docker daemon information
 type DockerInfoMsg struct {
 	ContainerCount int
@@ -54,52 +56,52 @@ type MainModel struct {
 
 // NewMainModel creates and initializes the main model
 func NewMainModel(width, height int) tea.Model {
-    // Create Docker client, etc.
-    dockerClient, err := client.NewDockerClient(context.Background())
-    if err != nil {
-        return &MainModel{
-            error:   err,
-            loading: false,
-            width:   width,
-            height:  height,
-        }
-    }
+	// Create Docker client, etc.
+	dockerClient, err := client.NewDockerClient(context.Background())
+	if err != nil {
+		return &MainModel{
+			error:   err,
+			loading: false,
+			width:   width,
+			height:  height,
+		}
+	}
 
-    // Initialize sub-models with the proper dimensions
-    containers := NewContainerModel(dockerClient)
-    containers.width = width
-    containers.height = height
-    
-    images := NewImageModel(dockerClient)
-    images.width = width
-    images.height = height
-    
-    networks := NewNetworkModel(dockerClient)
-    networks.width = width
-    networks.height = height
-    
-    volumes := NewVolumeModel(dockerClient)
-    volumes.width = width
-    volumes.height = height
-    
-    system := NewSystemModel(dockerClient)
-    system.width = width
-    system.height = height
+	// Initialize sub-models with the proper dimensions
+	containers := NewContainerModel(dockerClient)
+	containers.width = width
+	containers.height = height
 
-    m := &MainModel{
-        dockerClient: dockerClient,
-        currentView:  ViewMain,
-        width:        width,
-        height:       height,
-        loading:      true,
-        containers:   containers,
-        images:       images,
-        networks:     networks,
-        volumes:      volumes,
-        system:       system,
-    }
+	images := NewImageModel(dockerClient)
+	images.width = width
+	images.height = height
 
-    return m
+	networks := NewNetworkModel(dockerClient)
+	networks.width = width
+	networks.height = height
+
+	volumes := NewVolumeModel(dockerClient)
+	volumes.width = width
+	volumes.height = height
+
+	system := NewSystemModel(dockerClient)
+	system.width = width
+	system.height = height
+
+	m := &MainModel{
+		dockerClient: dockerClient,
+		currentView:  ViewMain,
+		width:        width,
+		height:       height,
+		loading:      true,
+		containers:   containers,
+		images:       images,
+		networks:     networks,
+		volumes:      volumes,
+		system:       system,
+	}
+
+	return m
 }
 
 // Init implements tea.Model and returns the initial command
@@ -151,8 +153,18 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	var cmds []tea.Cmd
 
+	if _, ok := msg.(ReturnToMainMsg); ok {
+		m.currentView = ViewMain
+		return m, m.fetchDockerInfo()
+	}
+
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		if msg.String() == "m" {
+			m.currentView = ViewMain
+			return m, m.fetchDockerInfo()
+		}
+
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit
@@ -216,18 +228,18 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			})
 			cmds = append(cmds, m.system.Init())
 			return m, tea.Batch(cmds...)
+		}
 
-		case "0", "esc":
-			if m.currentView != ViewMain {
-				m.currentView = ViewMain
-				return m, m.fetchDockerInfo()
-			}
+		// This catches "0" from anywhere and handles as "return to main menu"
+		if msg.String() == "0" {
+			m.currentView = ViewMain
+			return m, m.fetchDockerInfo()
 		}
 
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		
+
 		// Update sub-model dimensions too
 		if m.containers != nil {
 			m.containers.width = msg.Width
@@ -308,16 +320,15 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, tea.Batch(cmds...)
 }
 
-
 // View renders the current view
 func (m *MainModel) View() string {
 	if m.error != nil {
 		errorBox := StyleInfoBox.
 			BorderForeground(ColorError).
 			Render(StyleError.Render("Error connecting to Docker: " + m.error.Error()))
-		
+
 		helpText := "\nMake sure Docker is running and try again.\nPress q to quit."
-		
+
 		return StyleMainLayout.Render(
 			lipgloss.JoinVertical(lipgloss.Center,
 				StyleTitle.Render("DockerNav Error"),

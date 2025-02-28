@@ -60,6 +60,7 @@ type ImageKeyMap struct {
 	Pull    key.Binding
 	Remove  key.Binding
 	Back    key.Binding
+	MainMenu key.Binding
 }
 
 // DefaultImageKeyMap returns default image keybindings
@@ -80,6 +81,10 @@ func DefaultImageKeyMap() ImageKeyMap {
 		Back: key.NewBinding(
 			key.WithKeys("esc", "backspace"),
 			key.WithHelp("esc", "back"),
+		),
+		MainMenu: key.NewBinding(
+			key.WithKeys("m"),
+			key.WithHelp("m", "main menu"),
 		),
 	}
 }
@@ -125,6 +130,7 @@ func NewImageModel(docker *client.DockerClient) *ImageModel {
 			keyMap.Pull,
 			keyMap.Remove,
 			keyMap.Back,
+			keyMap.MainMenu,
 		}
 	}
 
@@ -243,6 +249,16 @@ func (m *ImageModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch m.state {
 		case "list":
 			switch {
+			case key.Matches(msg, m.keyMap.MainMenu):
+				return m, func() tea.Msg {
+					return ReturnToMainMsg{}
+				}
+
+			case key.Matches(msg, m.keyMap.Back):
+				return m, func() tea.Msg {
+					return ReturnToMainMsg{}
+				}
+
 			case key.Matches(msg, m.keyMap.Refresh):
 				m.loading = true
 				return m, tea.Batch(m.fetchImages(), m.spin.Tick)
@@ -477,7 +493,7 @@ func (m *ImageModel) View() string {
 
 	if m.state == "list" {
 		helpText := StyleHelp.Render(
-			"r: Refresh • p: Pull • x: Remove • esc: Back",
+			"r: Refresh • p: Pull • x: Remove • esc: Back • m: Main Menu",
 		)
 		content = lipgloss.JoinVertical(lipgloss.Left, content, "", helpText)
 	}

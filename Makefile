@@ -1,4 +1,4 @@
-.PHONY: build clean test lint run install
+.PHONY: all build-mac build-linux clean test lint run install help
 
 # Application name
 APP_NAME := dockerNav
@@ -10,15 +10,22 @@ BUILD_DIR := build
 # Main file path
 MAIN_FILE := cmd/dockerNav/main.go
 
-# Default target
-all: clean build
+# Default target builds both binaries
+all: clean build-mac build-linux
 
-# Build the application
-build:
-	@echo "Building $(APP_NAME)..."
+# Build for macOS
+build-mac:
+	@echo "Building $(APP_NAME) for Mac..."
 	@mkdir -p $(BUILD_DIR)
-	$(GO) build -o $(BUILD_DIR)/$(APP_NAME) $(MAIN_FILE)
-	@echo "Build complete: $(BUILD_DIR)/$(APP_NAME)"
+	GOOS=darwin GOARCH=amd64 $(GO) build -o $(BUILD_DIR)/$(APP_NAME)-mac $(MAIN_FILE)
+	@echo "Build complete: $(BUILD_DIR)/$(APP_NAME)-mac"
+
+# Build for Linux
+build-linux:
+	@echo "Building $(APP_NAME) for Linux..."
+	@mkdir -p $(BUILD_DIR)
+	GOOS=linux GOARCH=amd64 $(GO) build -o $(BUILD_DIR)/$(APP_NAME)-linux $(MAIN_FILE)
+	@echo "Build complete: $(BUILD_DIR)/$(APP_NAME)-linux"
 
 # Clean build artifacts
 clean:
@@ -31,30 +38,31 @@ test:
 	@echo "Running tests..."
 	$(GO) test ./...
 
-# Run linting
+# Run linter
 lint:
 	@echo "Running linter..."
 	golangci-lint run
 
-# Run the application
-run: build
-	@echo "Starting $(APP_NAME)..."
-	@$(BUILD_DIR)/$(APP_NAME)
+# Run the application (defaulting to your current platform binary)
+run: build-mac
+	@echo "Starting $(APP_NAME) on Mac..."
+	@$(BUILD_DIR)/$(APP_NAME)-mac
 
 # Install the application
-install: build
+install: build-mac
 	@echo "Installing $(APP_NAME)..."
-	@cp $(BUILD_DIR)/$(APP_NAME) $(GOPATH)/bin/
+	@cp $(BUILD_DIR)/$(APP_NAME)-mac $(GOPATH)/bin/
 	@echo "Installation complete: $(GOPATH)/bin/$(APP_NAME)"
 
-# List targets
+# Help message
 help:
 	@echo "Available targets:"
-	@echo "  all      - Clean and build the application"
-	@echo "  build    - Build the application"
-	@echo "  clean    - Remove build artifacts"
-	@echo "  test     - Run tests"
-	@echo "  lint     - Run linter"
-	@echo "  run      - Build and run the application"
-	@echo "  install  - Install the application to GOPATH/bin"
-	@echo "  help     - Show this help message"
+	@echo "  all         - Clean and build the binaries for Mac and Linux"
+	@echo "  build-mac   - Build the Mac binary"
+	@echo "  build-linux - Build the Linux binary"
+	@echo "  clean       - Remove build artifacts"
+	@echo "  test        - Run tests"
+	@echo "  lint        - Run linter"
+	@echo "  run         - Build and run the Mac binary"
+	@echo "  install     - Install the Mac binary to GOPATH/bin"
+	@echo "  help        - Show this help message"

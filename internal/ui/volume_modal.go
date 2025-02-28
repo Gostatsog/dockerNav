@@ -35,6 +35,7 @@ type VolumeKeyMap struct {
 	Create   key.Binding
 	Remove   key.Binding
 	Back     key.Binding
+	MainMenu key.Binding
 }
 
 // VolumeListMsg contains the list of volumes
@@ -82,6 +83,7 @@ func NewVolumeModel(dockerClient *client.DockerClient) *VolumeModel {
 			keyMap.Create,
 			keyMap.Remove,
 			keyMap.Back,
+			keyMap.MainMenu,
 		}
 	}
 	
@@ -145,6 +147,10 @@ func DefaultVolumeKeyMap() VolumeKeyMap {
 		Back: key.NewBinding(
 			key.WithKeys("esc", "backspace"),
 			key.WithHelp("esc", "back"),
+		),
+		MainMenu: key.NewBinding(
+			key.WithKeys("m"),
+			key.WithHelp("m", "main menu"),
 		),
 	}
 }
@@ -293,11 +299,11 @@ func (m *VolumeModel) View() string {
 	}
 
 	if m.error != nil {
-		errorBox := StyleInfoBox.Copy().
+		errorBox := StyleInfoBox.
 			BorderForeground(ColorError).
 			Render(StyleError.Render("Error loading volumes: " + m.error.Error()))
 		
-		helpText := "\nPress 'esc' to go back to the main menu."
+		helpText := "\nPress 'm' to go back to the main menu."
 		
 		return StyleMainLayout.Render(
 			lipgloss.JoinVertical(lipgloss.Center,
@@ -349,7 +355,7 @@ func (m *VolumeModel) View() string {
 
 	// Create help text
 	helpText := StyleHelp.Render(
-		"↑/↓: Navigate • r: Refresh • d: Delete • c: Create • i: Inspect • esc: Back",
+		"↑/↓: Navigate • r: Refresh • d: Delete • c: Create • i: Inspect • m: Main Menu",
 	)
 
 	// Join everything together
